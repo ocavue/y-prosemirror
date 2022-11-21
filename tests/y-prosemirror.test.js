@@ -16,7 +16,7 @@ import {
   yUndoPlugin,
   yXmlFragmentToProsemirrorJSON
 } from '../src/y-prosemirror.js'
-import { EditorState, Plugin, TextSelection } from 'prosemirror-state'
+import { EditorState, Plugin, TextSelection, NodeSelection } from 'prosemirror-state'
 import { EditorView } from 'prosemirror-view'
 import * as basicSchema from 'prosemirror-schema-basic'
 import { findWrapping } from 'prosemirror-transform'
@@ -319,6 +319,55 @@ export const testAddToHistoryIgnore = (_tc) => {
       yxml.get(0).toString() === '<paragraph>abc</paragraph>',
     'insertion (1) was undone'
   )
+}
+
+export const testRestoreRelativeSelectionCrash = (_tc) => {
+  const ydoc = new Y.Doc()
+  const view = createNewProsemirrorViewWithUndoManager(ydoc)
+
+  const img1 = (schema.node(
+    'image', { src: 'src1' }
+  ))
+  const img2 = (schema.node(
+    'image', { src: 'src2' }
+  ))
+
+  view.dispatch(
+    view.state.tr.insert(
+      0,
+      (schema.node(
+        'blockquote',
+        undefined,
+        (schema.node(
+          'blockquote',
+          undefined,
+          schema.node(
+            'paragraph',
+            undefined,
+            [img1, img2, (schema.text(
+              'abcd'
+            ))]
+          )
+        ))
+      ))
+    )
+  )
+
+  // Create a node selection wrapping the img2
+  const selection = NodeSelection.create(view.state.doc, 4)
+  view.dispatch(view.state.tr.setSelection(selection))
+  console.log('selection:', view.state.selection.from)
+
+  const yXmlFragment = ydoc.get('prosemirror', Y.XmlFragment)
+  ydoc.transact(() => {
+    const outerBlockquote = yXmlFragment.get(0)
+    const innerBlockquote = outerBlockquote.get(0)
+    // Delete innerBlockquote
+    outerBlockquote.delete(0, 1)
+    // Insert innerBlockquote back
+    outerBlockquote.insert(0, [innerBlockquote])
+  })
+  console.log('selection:', view.state.selection.from)
 }
 
 const createNewProsemirrorViewWithSchema = (y, schema, undoManager = false) => {
